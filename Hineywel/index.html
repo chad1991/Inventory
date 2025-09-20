@@ -12,6 +12,7 @@
     video { width: 100%; max-width: 400px; display: none; margin-top: 10px; border: 1px solid #ccc; }
     table { width: 100%; margin-top: 15px; border-collapse: collapse; }
     th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    #status { margin-top: 10px; font-weight: bold; color: darkblue; }
   </style>
 </head>
 <body>
@@ -54,22 +55,46 @@
     <tbody></tbody>
   </table>
 
+  <h3>Status</h3>
+  <p id="status">Loading inventory...</p>
+
   <h3>Log</h3>
   <pre id="log"></pre>
 
-  <!-- ZXing library for barcode scanning -->
+  <!-- ZXing for barcode scanning -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <!-- JSZip for unzipping inventory file -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
   <script>
     let inventory = {};
     let summary = {};
     let codeReader = null;
 
-    // Load invast.txt
-    fetch("invast.txt")
-      .then(res => res.text())
+    // Update status text
+    function setStatus(msg, isError = false) {
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      el.style.color = isError ? "red" : "darkblue";
+    }
+
+    // Load invast.zip instead of plain invast.txt
+    setStatus("Fetching invast.zip...");
+    fetch("invast.zip")
+      .then(res => res.arrayBuffer())
       .then(data => {
-        let lines = data.split("\n");
+        setStatus("Unzipping file...");
+        return JSZip.loadAsync(data);
+      })
+      .then(zip => {
+        if (!zip.file("invast.txt")) {
+          throw new Error("invast.txt not found inside zip!");
+        }
+        return zip.file("invast.txt").async("string");
+      })
+      .then(text => {
+        setStatus("Parsing inventory data...");
+        let lines = text.split("\n");
         lines.forEach(line => {
           let parts = line.split(",");
           if (parts.length >= 7) {
@@ -80,9 +105,13 @@
             inventory[barcode] = { desc: itemCode, price: price, category: category };
           }
         });
+        setStatus("✅ Inventory loaded: " + Object.keys(inventory).length + " items.");
         log("Inventory loaded: " + Object.keys(inventory).length + " items.");
       })
-      .catch(err => log("Error loading invast.txt: " + err));
+      .catch(err => {
+        setStatus("❌ Error loading inventory", true);
+        log("Error loading invast.zip: " + err);
+      });
 
     function lookupBarcode() {
       let code = document.getElementById("barcode").value.trim();
@@ -203,4 +232,3 @@
   </script>
 </body>
 </html>
-
